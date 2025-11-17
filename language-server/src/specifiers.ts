@@ -133,6 +133,7 @@ export let ASFunctionSpecifiers : any = {
     "BlueprintEvent": "Function can be overridden by child blueprint classes",
     "Unreliable": "Network function is sent as unreliable",
     "BlueprintOverride": "Override a BlueprintEvent in a parent script or C++ class",
+    "FieldNotify": "Make this function observable by the MVVM system", // Aesir Mod: add support for FieldNotifies
     "CallInEditor": "Create a button in the details panel to call this function in the editor",
     "Category": "Category to list this under in the editor",
     "Keywords": "Keywords this can be found by in the editor",

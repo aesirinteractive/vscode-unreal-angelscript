@@ -240,6 +240,7 @@ export class DBMethod implements DBSymbol
     isOverride : boolean = false;
     isDefaultsOnly : boolean = false;
     isLocal : boolean = false;
+    isFieldNotify : boolean = false; // Aesir Mod: add support for FieldNotifies
     id : number = NextMethodId++;
     containingType : DBType = null;
     namespace : DBNamespace = null;
@@ -286,6 +287,7 @@ export class DBMethod implements DBSymbol
         inst.isBlueprintEvent = this.isBlueprintEvent;
         inst.isCallable = this.isCallable;
         inst.isBlueprintOverride = this.isBlueprintOverride;
+        inst.isFieldNotify = this.isFieldNotify; // Aesir Mod: add support for FieldNotifies
         inst.isConst = this.isConst;
         inst.isProperty = this.isProperty;
         inst.isDefaultsOnly = this.isDefaultsOnly;
