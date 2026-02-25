@@ -11,6 +11,22 @@ import * as typedb from './database';
 import * as specifiers from './specifiers';
 import { FormatFunctionDocumentation, FormatPropertyDocumentation } from './documentation';
 
+// Aesir Mod: Add setting to return all workspace symbols
+export interface ASSettings
+{
+    returnAllWorkspaceSymbols : boolean,
+};
+
+let SymbolSettings : ASSettings = {
+    returnAllWorkspaceSymbols : false,
+};
+
+export function GetSymbolSettings() : ASSettings
+{
+    return SymbolSettings;
+}
+// ENDAesir Mod: Add setting to return all workspace symbols
+
 export function GetDefinition(asmodule : scriptfiles.ASModule, position : Position) : Array<Location>
 {
     let locations = new Array<Location>();
@@ -941,16 +957,23 @@ export function WorkspaceSymbols( query : string ) : WorkspaceSymbol[]
 {
     let symbols = new Array<WorkspaceSymbol>();
 
+// Aesir Mod: Add setting to return all workspace symbols
+    if (SymbolSettings.returnAllWorkspaceSymbols)
+    {
+        query = "";
+    }
+
     // Always ignore case for queries
     query = query.toLowerCase();
 
     // This is intentional, we don't send anything when there's no query because it's way too slow
-    if (query.length == 0)
+    if (!SymbolSettings.returnAllWorkspaceSymbols && query.length == 0)
         return symbols;
 
     // We never match for members unless we've typed a longer query string, to improve performance.
     // The vscode filtering on all this stuff is also incredibly bad, so this isn't a very useful usecase anyway.
-    let matchMembers = query.length >= 5;
+    let matchMembers = SymbolSettings.returnAllWorkspaceSymbols || query.length >= 5;
+// END Aesir Mod: Add setting to return all workspace symbols
 
     for (let [_, dbtype] of typedb.GetAllTypesById())
     {
