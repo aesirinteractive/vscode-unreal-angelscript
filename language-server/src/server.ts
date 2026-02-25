@@ -1215,6 +1215,11 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     if (dirtyDiagnostics)
         DirtyAllDiagnostics();
 
+// Aesir Mod: Add setting to return all workspace symbols
+    let symbolSettings = scriptsymbols.GetSymbolSettings();
+    symbolSettings.returnAllWorkspaceSymbols = settings.returnAllWorkspaceSymbols;
+// END Aesir Mod: Add setting to return all workspace symbols
+
     if (port != settings.unrealConnectionPort)
     {
         port = settings.unrealConnectionPort;

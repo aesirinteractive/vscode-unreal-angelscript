@@ -59,6 +59,11 @@
         "configuration": {
             "title": "Unreal Angelscript",
             "properties": {
+                "UnrealAngelscript.returnAllWorkspaceSymbols": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Return all workspace symbols and let VSCode filter, instead of filtering in the language server."
+                },
                 "UnrealAngelscript.insertParenthesisOnFunctionCompletion": {
                     "type": "boolean",
                     "default": false,
