@@ -325,6 +325,14 @@ connect_unreal();
 let shouldSendDiagnosticRelatedInformation: boolean = false;
 let RootUris : string[] = [];
 
+// Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+function mapDriveLetter(path: string, fun) {
+    let res = path.replace(/file:\/\/\/([a-zA-Z]):/, (_, drive) => "file:///" + fun(drive) + ":");
+    console.error("ADDDRIVE ", res);
+    return res;
+}
+// END Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
@@ -334,11 +342,19 @@ connection.onInitialize((_params): InitializeResult => {
 
     if (_params.workspaceFolders == null) {
         Roots.push(_params.rootPath);
-        RootUris.push(decodeURIComponent(_params.rootUri));
+        // Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+        let uri = decodeURIComponent(_params.rootUri);
+        RootUris.push(mapDriveLetter(uri, (d) => d.toUpperCase()));
+        RootUris.push(mapDriveLetter(uri, (d) => d.toLowerCase()));
+        // END Aesir Mod: Add both upper case and lower case drive letter versions to root uris
     } else {
         for (let Workspace of _params.workspaceFolders) {
             Roots.push(URI.parse(Workspace.uri).fsPath);
-            RootUris.push(decodeURIComponent(Workspace.uri));
+            // Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+            let uri = decodeURIComponent(Workspace.uri);
+            RootUris.push(mapDriveLetter(uri, (d) => d.toUpperCase()));
+            RootUris.push(mapDriveLetter(uri, (d) => d.toLowerCase()));
+            // END Aesir Mod: Add both upper case and lower case drive letter versions to root uris
         }
     }
 
