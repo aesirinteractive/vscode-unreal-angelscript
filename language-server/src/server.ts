@@ -53,14 +53,44 @@ import {
     buildDisconnect, buildOpenAssets, buildCreateBlueprint
 } from './unreal-buffers';
 
+// Aesir Mod: Use default connection setup to allow connecting through different means.
+// Use IPC unless a different method is explicitly set.
+function useIPC() {
+    if (process.argv.length <= 2)
+        return true;
+    let argv = process.argv.slice(2);
+    for (let i = 0; i < argv.length; i++) {
+        let arg = argv[i];
+        if (arg === '--node-ipc') {
+            return true;
+        }
+        else if (arg === '--stdio') {
+            return false;
+        }
+        else if (arg === '--socket') {
+            return false;
+        }
+        else if (arg === '--pipe') {
+            return false;
+        }
+        else {
+            var args = arg.split('=');
+            if (args[0] === '--socket') {
+                return false;
+            }
+            else if (args[0] === '--pipe') {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // Create a connection for the server.
-//
-// If we have a Node IPC send function available, use that, otherwise use stdio
-// to be used as a standalone lsp client.
-const ipcSendAvailble = typeof process.send === 'function';
-let connection: Connection = ipcSendAvailble
+let connection: Connection = useIPC()
     ? createConnection(new IPCMessageReader(process), new IPCMessageWriter(process))
-    : createConnection(process.stdin, process.stdout);
+    : createConnection();
+// END Aesir Mod: Use default connection setup to allow connecting through different means.
 
 // Create a connection to unreal
 let unreal : Socket;
