@@ -62,6 +62,7 @@ export enum ASScopeType
     Code,
     Namespace,
     LiteralAsset,
+    Interface,  // #GLAZE-1184 Interface Support
 }
 
 export class ASModule
@@ -1970,7 +1971,18 @@ function GenerateTypeInformation(scope : ASScope)
 
             let classdef = scope.previous.ast;
             let dbtype = AddDBType(scope, classdef.name.value);
-            dbtype.supertype = classdef.superclass ? classdef.superclass.value : "UObject";
+            // #GLAZE-1184 Interface Support: basetypes is an array; first is superclass, rest are implemented interfaces
+            if (classdef.basetypes && classdef.basetypes.length > 0)
+            {
+                dbtype.supertype = classdef.basetypes[0].value;
+                if (classdef.basetypes.length > 1)
+                    dbtype.implementedInterfaces = classdef.basetypes.slice(1).map((b: any) => b.value);
+            }
+            else
+            {
+                dbtype.supertype = "UObject";
+            }
+            // -- #GLAZE-1184
             if (classdef.documentation)
                 dbtype.documentation = typedb.FormatDocumentationComment(classdef.documentation);
 
@@ -2030,6 +2042,77 @@ function GenerateTypeInformation(scope : ASScope)
             dbtype.moduleScopeStart = scope.start_offset;
             dbtype.moduleScopeEnd = scope.end_offset;
         }
+        // #GLAZE-1184 Interface Support: interface definition in global scope
+        else if (scope.previous.ast.type == node_types.InterfaceDefinition)
+        {
+            scope.declaration = scope.previous;
+
+            let interfacedef = scope.previous.ast;
+            let dbtype = AddDBType(scope, interfacedef.name.value);
+            dbtype.isInterface = true;
+            dbtype.supertype = null;
+
+            if (interfacedef.documentation)
+                dbtype.documentation = typedb.FormatDocumentationComment(interfacedef.documentation);
+
+            dbtype.moduleOffset = scope.previous.start_offset + interfacedef.name.start;
+            dbtype.moduleOffsetEnd = scope.previous.start_offset + interfacedef.name.end;
+
+            scope.module.types.push(dbtype);
+            scope.dbtype = dbtype;
+
+            if (interfacedef.macro)
+            {
+                dbtype.macroSpecifiers = new Map<string, string>();
+                dbtype.macroMeta = new Map<string, string>();
+                MakeMacroSpecifiers(interfacedef.macro, dbtype.macroSpecifiers, dbtype.macroMeta);
+            }
+
+            if (interfacedef.superinterfaces && interfacedef.superinterfaces.length > 0)
+                dbtype.implementedInterfaces = interfacedef.superinterfaces.map((b: any) => b.value);
+
+            ExtendScopeToStatement(scope, scope.previous);
+            dbtype.moduleScopeStart = scope.start_offset;
+            dbtype.moduleScopeEnd = scope.end_offset;
+
+            // Interface methods end with ';' (no body), so they don't create subscopes.
+            // Process them directly from the statements already parsed by start_interface.
+            for (let statement of scope.statements)
+            {
+                if (!statement.ast || statement.ast.type != node_types.FunctionDecl)
+                    continue;
+                if (!statement.ast.noBody)
+                    continue;
+
+                let funcdef = statement.ast;
+                let dbfunc = AddDBMethod(scope, funcdef.name.value);
+                if (funcdef.documentation)
+                    dbfunc.documentation = typedb.FormatDocumentationComment(funcdef.documentation);
+                dbfunc.moduleOffset = statement.start_offset + funcdef.name.start;
+                dbfunc.moduleOffsetEnd = statement.start_offset + funcdef.name.end;
+
+                if (funcdef.returntype)
+                    dbfunc.returnType = GetQualifiedTypename(funcdef.returntype);
+                else
+                    dbfunc.returnType = "void";
+
+                AddParametersToFunction(scope, statement, dbfunc, funcdef.parameters);
+
+                if (funcdef.macro)
+                {
+                    dbfunc.isUFunction = true;
+                    dbfunc.macroSpecifiers = new Map<string, string>();
+                    dbfunc.macroMeta = new Map<string, string>();
+                    MakeMacroSpecifiers(funcdef.macro, dbfunc.macroSpecifiers, dbfunc.macroMeta);
+
+                    if (dbfunc.macroSpecifiers.has("BlueprintEvent"))
+                        dbfunc.isBlueprintEvent = true;
+                }
+
+                dbtype.addSymbol(dbfunc);
+            }
+        }
+        // -- #GLAZE-1184
         // Namespace definition in global scope
         else if (scope.previous.ast.type == node_types.NamespaceDefinition)
         {
@@ -5007,29 +5090,59 @@ function DetectNodeSymbols(scope : ASScope, statement : ASStatement, node : any,
             // Add the typename of the class itself
             AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
 
-            // If we specified a super type, add the symbol for that too
-            if (node.superclass)
+            // #GLAZE-1184 Interface Support: iterate all basetypes (superclass + implemented interfaces)
+            let basetypes = node.basetypes && node.basetypes.length > 0 ? node.basetypes : (node.superclass ? [node.superclass] : []);
+            for (let basetype of basetypes)
             {
-                let superType = typedb.LookupType(scope.getNamespace(), node.superclass.value);
-                if (superType)
+                let baseDBType = typedb.LookupType(scope.getNamespace(), basetype.value);
+                if (baseDBType)
                 {
-                    let superSymbol = AddIdentifierSymbol(scope, statement, node.superclass, ASSymbolType.Typename, null, node.superclass.value);
-                    if (superType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(superType.declaredModule))
-                        superSymbol.isUnimported = true;
-                    scope.module.markDependencyType(superType);
+                    let baseSymbol = AddIdentifierSymbol(scope, statement, basetype, ASSymbolType.Typename, null, basetype.value);
+                    if (baseDBType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(baseDBType.declaredModule))
+                        baseSymbol.isUnimported = true;
+                    scope.module.markDependencyType(baseDBType);
                 }
                 else
                 {
                     let hasPotentialCompletions = false;
-                    if (scope.module.isEditingNode(statement, node.superclass))
-                        hasPotentialCompletions = typedb.HasTypeWithPrefix(scope.getNamespace(), node.superclass.value);
-                    AddUnknownSymbol(scope, statement, node.superclass, hasPotentialCompletions);
-                    scope.module.markDependencyIdentifier(node.superclass.value);
-                    return null;
+                    if (scope.module.isEditingNode(statement, basetype))
+                        hasPotentialCompletions = typedb.HasTypeWithPrefix(scope.getNamespace(), basetype.value);
+                    AddUnknownSymbol(scope, statement, basetype, hasPotentialCompletions);
+                    scope.module.markDependencyIdentifier(basetype.value);
+                }
+            }
+            // -- #GLAZE-1184
+        }
+        break;
+        // #GLAZE-1184 Interface Support
+        case node_types.InterfaceDefinition:
+        {
+            AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
+
+            // Add symbols for super-interfaces
+            let superinterfaces = node.superinterfaces ?? [];
+            for (let iface of superinterfaces)
+            {
+                let ifaceDBType = typedb.LookupType(scope.getNamespace(), iface.value);
+                if (ifaceDBType)
+                {
+                    let ifaceSymbol = AddIdentifierSymbol(scope, statement, iface, ASSymbolType.Typename, null, iface.value);
+                    if (ifaceDBType.declaredModule && !ScriptSettings.automaticImports && !scope.module.isModuleImported(ifaceDBType.declaredModule))
+                        ifaceSymbol.isUnimported = true;
+                    scope.module.markDependencyType(ifaceDBType);
+                }
+                else
+                {
+                    let hasPotentialCompletions = false;
+                    if (scope.module.isEditingNode(statement, iface))
+                        hasPotentialCompletions = typedb.HasTypeWithPrefix(scope.getNamespace(), iface.value);
+                    AddUnknownSymbol(scope, statement, iface, hasPotentialCompletions);
+                    scope.module.markDependencyIdentifier(iface.value);
                 }
             }
         }
         break;
+        // -- #GLAZE-1184
         case node_types.StructDefinition:
         {
             AddIdentifierSymbol(scope, statement, node.name, ASSymbolType.Typename, null, node.name.value);
@@ -6195,6 +6308,12 @@ function DetermineScopeType(scope : ASScope)
             {
                 scope.scopetype = ASScopeType.Class;
             }
+            // #GLAZE-1184 Interface Support
+            else if (ast_type == node_types.InterfaceDefinition)
+            {
+                scope.scopetype = ASScopeType.Interface;
+            }
+            // -- #GLAZE-1184
             else if (ast_type == node_types.EnumDefinition)
             {
                 scope.scopetype = ASScopeType.Enum;
@@ -6593,6 +6712,11 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
         case ASScopeType.Enum:
             startRule = "start_enum";
         break;
+        // #GLAZE-1184 Interface Support
+        case ASScopeType.Interface:
+            startRule = "start_interface";
+        break;
+        // -- #GLAZE-1184
         case ASScopeType.Function:
         case ASScopeType.LiteralAsset:
         case ASScopeType.Code:

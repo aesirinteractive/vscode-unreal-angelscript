@@ -91,6 +91,17 @@ start_class
     / _ @incomplete_access_specifier _
     / _ { return null; }
 
+// #GLAZE-1184 Interface Support
+start_interface
+     = comment:comment_documentation decl:interface_declaration _
+     {
+        if (comment)
+            decl.documentation = comment;
+        return decl;
+     }
+    / _ { return null; }
+// -- #GLAZE-1184
+
 start_enum
     = @enum_statement _
     / _ { return null; }
@@ -172,6 +183,7 @@ global_declaration
     / event_decl
     / struct_decl
     / class_decl
+    / interface_decl
     / enum_decl
     / namespace_decl
     / asset_decl
@@ -949,6 +961,7 @@ octal_literal = "0" "o" [0-8]*
 keyword
     = &"i" @(
         "if"
+        / "interface"
     )
     / &"r" @(
         "return"
@@ -1020,6 +1033,7 @@ keyword
         / "UENUM"
         / "UMETA"
         / "USTRUCT"
+        / "UINTERFACE"
     )
 
 standard_template_basetype
@@ -1245,6 +1259,14 @@ uclass_macro
         return Compound(range(), n.Macro, macros);
     }
 
+// #GLAZE-1184 Interface Support
+uinterface_macro
+    = &"U" "UINTERFACE" _ "(" macros:macro_list _ ")"
+    {
+        return Compound(range(), n.Macro, macros);
+    }
+// -- #GLAZE-1184
+
 uenum_macro
     = &"U" "UENUM" _ "(" macros:macro_list _ ")"
     {
@@ -1340,20 +1362,24 @@ struct_decl
         return node;
     }
 
+// #GLAZE-1184 Interface Support: shared helper for namespace-qualified type name
+base_type_name
+    = identifier_name (_ ":" ":" _ identifier_name)*
+    { return Identifier(range(), text()); }
+
 class_decl
-    = macro:(@uclass_macro _)? &"c" "class" _ name:identifier superclass:(
-        _ ":" @(_ @(
-            identifier_name (_ ":" ":" _ identifier_name)*
-            {
-                return Identifier(range(), text());
-            }
-        ))?
+    = macro:(@uclass_macro _)? &"c" "class" _ name:identifier basetypes:(
+        _ ":" _ @(
+            first:base_type_name rest:(_ "," _ @base_type_name)*
+            { return [first, ...rest]; }
+        )
     )?
     {
         let node = Compound(range(), n.ClassDefinition, null);
         node.name = name;
         node.macro = macro;
-        node.superclass = superclass;
+        node.basetypes = basetypes ?? [];
+        node.superclass = basetypes ? basetypes[0] : null;  // backward compat
         return node;
     }
 
@@ -1423,6 +1449,35 @@ class_property_decl
         decl.access = pre_access ? pre_access : post_access;
         return decl;
     }
+
+// #GLAZE-1184 Interface Support
+interface_decl
+    = macro:(@uinterface_macro _)? &"i" "interface" _ name:identifier superinterfaces:(
+        _ ":" _ @(
+            first:base_type_name rest:(_ "," _ @base_type_name)*
+            { return [first, ...rest]; }
+        )
+    )?
+    {
+        let node = Compound(range(), n.InterfaceDefinition, null);
+        node.name = name;
+        node.macro = macro;
+        node.superinterfaces = superinterfaces ?? [];
+        return node;
+    }
+
+interface_declaration
+    = interface_method_decl
+
+interface_method_decl
+    = pre_access:(@access_specifier _)? macro:(@ufunction_macro _)? post_access:(@access_specifier _)? decl:function_signature _ ";"
+    {
+        decl.macro = macro;
+        decl.access = pre_access ? pre_access : post_access;
+        decl.noBody = true;
+        return decl;
+    }
+// -- #GLAZE-1184
 
 access_specifier
     = &"p" ("private" / "protected" / "public")

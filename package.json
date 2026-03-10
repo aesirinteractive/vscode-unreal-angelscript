@@ -2,7 +2,7 @@
     "name": "unreal-angelscript",
     "displayName": "Unreal Angelscript",
     "description": "Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://github.com/Hazelight/UnrealEngine-Angelscript",
-    "version": "1.9.2-aesir.2",
+    "version": "1.9.2-aesir.3",
     "publisher": "Hazelight",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -73,6 +73,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Emit diagnostic warnings and hints when types, functions, or variables violate the Unreal naming convention."
+                },
+                "UnrealAngelscript.diagnosticsForMissingSuperCall": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Warn when a function overrides a parent method (AS-defined or C++ BlueprintNativeEvent) without calling Super::FunctionName(). A commented-out super call suppresses the warning."
                 },
                 "UnrealAngelscript.markUnreadVariablesAsUnused": {
                     "type": "boolean",
@@ -702,7 +707,7 @@
         "watch:extension": "cd extension && node esbuild.js --watch",
         "watch:language-server": "cd language-server && node esbuild.js --watch",
         "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
-        "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum",
-        "pegjs:test": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum --trace --test-file test.as -S start"
+        "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum,start_interface",
+        "pegjs:test": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum,start_interface --trace --test-file test.as -S start"
     }
 }

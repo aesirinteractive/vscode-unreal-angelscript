@@ -1248,6 +1248,14 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
         dirtyDiagnostics = true;
     }
 
+    // #GLAZE-1184
+    if (diagnosticSettings.missingSuperCallDiagnostics != settings.diagnosticsForMissingSuperCall)
+    {
+        diagnosticSettings.missingSuperCallDiagnostics = settings.diagnosticsForMissingSuperCall;
+        dirtyDiagnostics = true;
+    }
+    // -- #GLAZE-1184
+
     if (dirtyDiagnostics)
         DirtyAllDiagnostics();
 

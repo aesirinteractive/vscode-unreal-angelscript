@@ -8,11 +8,13 @@ export interface DiagnosticSettings
 {
     namingConventionDiagnostics : boolean,
     markUnreadVariablesAsUnused : boolean,
+    missingSuperCallDiagnostics : boolean,  // #GLAZE-1184
 };
 
 let DiagnosticSettings : DiagnosticSettings = {
     namingConventionDiagnostics: true,
     markUnreadVariablesAsUnused: false,
+    missingSuperCallDiagnostics: true,      // #GLAZE-1184
 };
 
 // Diagnostics sent over to us by the unreal editor
@@ -150,10 +152,65 @@ function AddScopeDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Di
     if (scope.dbfunc)
         AddFunctionDiagnostics(scope, scope.dbfunc, diagnostics);
 
+    // #GLAZE-1184 Interface Support: check that all declared interface methods are implemented
+    if (scope.dbtype && !scope.dbtype.isInterface)
+        AddInterfaceImplementationDiagnostics(scope, diagnostics);
+    // -- #GLAZE-1184
+
     // Allow subscopes to emit diagnostics
     for (let subscope of scope.scopes)
         AddScopeDiagnostics(subscope, diagnostics);
 }
+
+// #GLAZE-1184 Interface Support
+function AddInterfaceImplementationDiagnostics(scope : scriptfiles.ASScope, diagnostics : Array<Diagnostic>)
+{
+    let dbtype = scope.dbtype;
+    if (!dbtype.implementedInterfaces || dbtype.implementedInterfaces.length == 0)
+        return;
+
+    for (let ifaceName of dbtype.implementedInterfaces)
+    {
+        let dbIface = typedb.LookupType(scope.getNamespace(), ifaceName);
+        if (!dbIface || !dbIface.isInterface)
+            continue;
+
+        // Only validate against AS-defined interfaces (not C++ UInterfaces sent over the protocol)
+        if (!dbIface.declaredModule)
+            continue;
+
+        // Build the set of non-interface types in this class's hierarchy to check against
+        let nonInterfaceExtendTypes = dbtype.getExtendTypesList().filter((t: typedb.DBType) => !t.isInterface);
+
+        dbIface.forEachSymbol(function(symbol : typedb.DBSymbol)
+        {
+            if (!(symbol instanceof typedb.DBMethod))
+                return;
+
+            // Check if any non-interface type in the hierarchy provides this method
+            let found = false;
+            for (let extendType of nonInterfaceExtendTypes)
+            {
+                if (extendType.symbols.has(symbol.name))
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                diagnostics.push(<Diagnostic> {
+                    severity: DiagnosticSeverity.Error,
+                    range: scope.module.getRange(dbtype.moduleOffset, dbtype.moduleOffsetEnd),
+                    message: `Class '${dbtype.name}' must implement interface method '${symbol.name}()' from '${ifaceName}'`,
+                    source: "angelscript",
+                });
+            }
+        });
+    }
+}
+// -- #GLAZE-1184
 
 function VerifyDelegateBinds(asmodule : scriptfiles.ASModule, diagnostics : Array<Diagnostic>)
 {
@@ -530,10 +587,15 @@ function AddFunctionDiagnostics(scope : scriptfiles.ASScope, dbfunc : typedb.DBM
             if (parentMethod && parentMethod instanceof typedb.DBMethod)
             {
                 // Add a diagnostic if we aren't calling the super function
-                if (!dbfunc.hasSuperCall
-                    && ((dbfunc.isBlueprintEvent && (!dbfunc.returnType || dbfunc.returnType == "void") && !parentMethod.isEmpty) || parentMethod.hasMetaData("RequireSuperCall"))
-                    && parentMethod.declaredModule
+                // #GLAZE-1184 -- generalized to cover both AS-defined and native C++ parent methods and removed the void return type requirement
+                const parentHasBody = parentMethod.isNativeEvent;
+
+                if (DiagnosticSettings.missingSuperCallDiagnostics
+                    && !dbfunc.hasSuperCall
+                    && ((dbfunc.isBlueprintEvent && parentHasBody)
+                        || parentMethod.hasMetaData("RequireSuperCall"))
                     && !parentMethod.hasMetaData("NoSuperCall") && !dbfunc.hasMetaData("NoSuperCall"))
+                // -- #GLAZE-1184
                 {
                     diagnostics.push(<Diagnostic> {
                         severity: DiagnosticSeverity.Warning,
@@ -646,7 +708,20 @@ function AddScopeNamingConventionDiagnostics(scope : scriptfiles.ASScope, diagno
         let hasSuggestion = false;
 
         // Make sure the type begins with the correct character indicator
-        if (scopeType.isEnum)
+        // #GLAZE-1184 Interface Support — interfaces use I-prefix; skip standard U/A/F/E convention
+        if (scopeType.isInterface)
+        {
+            if (suggestedName.length >= 1 && suggestedName[0] != 'I')
+            {
+                if (suggestedName[0] == 'U' || suggestedName[0] == 'A' || suggestedName[0] == 'F' || suggestedName[0] == 'E')
+                    suggestedName = "I"+suggestedName.substring(1);
+                else
+                    suggestedName = "I"+suggestedName;
+                hasSuggestion = true;
+            }
+        }
+        // -- #GLAZE-1184
+        else if (scopeType.isEnum)
         {
             if (suggestedName.length >= 1 && suggestedName[0] != 'E')
             {

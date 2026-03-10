@@ -48,6 +48,7 @@ module.exports = {
 
     StructDefinition: indexed ? i++ : "StructDefinition",
     ClassDefinition: indexed ? i++ : "ClassDefinition",
+    InterfaceDefinition: indexed ? i++ : "InterfaceDefinition",  // #GLAZE-1184 Interface Support
     EnumDefinition: indexed ? i++ : "EnumDefinition",
     AssetDefinition: indexed ? i++ : "AssetDefinition",
     NamespaceDefinition: indexed ? i++ : "NamespaceDefinition",
