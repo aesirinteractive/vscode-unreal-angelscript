@@ -65,7 +65,8 @@ export enum DBTypeClassification
     Struct,
     Event,
     Delegate,
-    Primitive
+    Primitive,
+    Interface,  // #GLAZE-1184 Interface Support
 };
 
 export interface DBSymbol
@@ -258,6 +259,7 @@ export class DBMethod implements DBSymbol
 
     hasSuperCall : boolean = false;
     isEmpty : boolean = false;
+    isNativeEvent : boolean = false;  // #GLAZE-1184 true = BlueprintNativeEvent, has C++ body
 
     isDelegateBindFunction : boolean = false;
     delegateBindType : string = null;
@@ -345,6 +347,10 @@ export class DBMethod implements DBSymbol
             this.isBlueprintEvent = input['event'];
         else
             this.isBlueprintEvent = false;
+
+        // #GLAZE-1184
+        if ('nativeEvent' in input) this.isNativeEvent = input['nativeEvent'];
+        // -- #GLAZE-1184
 
         if ('isProperty' in input)
             this.isProperty = input['isProperty'];
@@ -638,6 +644,8 @@ export class DBType implements DBSymbol
 
     isStruct : boolean;
     isEnum : boolean;
+    isInterface : boolean = false;  // #GLAZE-1184 Interface Support
+    implementedInterfaces : Array<string> = null;  // #GLAZE-1184 Interface Support
     isDelegate : boolean = false;
     isEvent : boolean = false;
     isPrimitive : boolean = false;
@@ -764,6 +772,18 @@ export class DBType implements DBSymbol
             this.isEnum = input['isEnum'];
         else
             this.isEnum = false;
+
+        // #GLAZE-1184 Interface Support
+        if ('isInterface' in input)
+            this.isInterface = input['isInterface'];
+        else
+            this.isInterface = false;
+
+        if ('implementedInterfaces' in input)
+            this.implementedInterfaces = input['implementedInterfaces'];
+        else
+            this.implementedInterfaces = null;
+        // -- #GLAZE-1184
 
         let delegateSignatureMethod : DBSymbol = null;
         if ('isEvent' in input)
@@ -899,6 +919,18 @@ export class DBType implements DBSymbol
                 if(dbsuper && !this.extendTypes.includes(dbsuper))
                     this.extendTypes.push(dbsuper);
             }
+
+            // #GLAZE-1184 Interface Support: include implemented interfaces in the extend chain
+            if (checkType.implementedInterfaces)
+            {
+                for (let ifaceName of checkType.implementedInterfaces)
+                {
+                    let dbIface = LookupType(checkType.namespace, ifaceName);
+                    if (dbIface && !this.extendTypes.includes(dbIface))
+                        this.extendTypes.push(dbIface);
+                }
+            }
+            // -- #GLAZE-1184
 
             if (checkType.isTemplateInstantiation && checkType.templateSubTypes.length > 0 && this.isTemplateInheritSpecializations)
             {
@@ -1397,6 +1429,10 @@ export class DBType implements DBSymbol
                 this.classification = DBTypeClassification.Struct;
             else if (this.isPrimitive)
                 this.classification = DBTypeClassification.Primitive;
+            // #GLAZE-1184 Interface Support
+            else if (this.isInterface)
+                this.classification = DBTypeClassification.Interface;
+            // -- #GLAZE-1184
             else if (this.inheritsFrom("UActorComponent"))
                 this.classification = DBTypeClassification.Component;
             else if (this.inheritsFrom("AActor"))

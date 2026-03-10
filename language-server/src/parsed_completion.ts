@@ -3065,13 +3065,25 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
         {
             context.priorExpression = null;
             context.priorType = null;
-            if (node.superclass)
+            // #GLAZE-1184 Interface Support: check all basetypes (superclass + interfaces)
+            let basetypes = node.basetypes && node.basetypes.length > 0 ? node.basetypes : (node.superclass ? [node.superclass] : []);
+            let editingBasetype = null;
+            for (let basetype of basetypes)
+            {
+                if (context.scope.module.isEditingNode(context.statement, basetype))
+                {
+                    editingBasetype = basetype;
+                    break;
+                }
+            }
+            if (editingBasetype)
             {
                 context.maybeTypename = true;
                 context.isRightExpression = false;
-                context.completingNode = node.superclass;
-                context.completingSymbol = node.superclass.value;
+                context.completingNode = editingBasetype;
+                context.completingSymbol = editingBasetype.value;
             }
+            // -- #GLAZE-1184
             else
             {
                 context.isNamingSomethingNew = true;
@@ -3085,6 +3097,41 @@ function ExtractPriorExpressionAndSymbol(context : CompletionContext, node : any
             return true;
         }
         break;
+        // #GLAZE-1184 Interface Support
+        case scriptfiles.node_types.InterfaceDefinition:
+        {
+            context.priorExpression = null;
+            context.priorType = null;
+            let superinterfaces = node.superinterfaces ?? [];
+            let editingIface = null;
+            for (let iface of superinterfaces)
+            {
+                if (context.scope.module.isEditingNode(context.statement, iface))
+                {
+                    editingIface = iface;
+                    break;
+                }
+            }
+            if (editingIface)
+            {
+                context.maybeTypename = true;
+                context.isRightExpression = false;
+                context.completingNode = editingIface;
+                context.completingSymbol = editingIface.value;
+            }
+            else
+            {
+                context.isNamingSomethingNew = true;
+                context.completingNode = node.name;
+                if (node.name)
+                    context.completingSymbol = node.name.value;
+                else
+                    context.completingSymbol = "";
+            }
+            return true;
+        }
+        break;
+        // -- #GLAZE-1184
         case scriptfiles.node_types.StructDefinition:
         case scriptfiles.node_types.EnumDefinition:
         case scriptfiles.node_types.NamespaceDefinition:
