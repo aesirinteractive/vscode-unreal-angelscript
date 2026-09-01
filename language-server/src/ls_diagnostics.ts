@@ -36,6 +36,27 @@ export function GetDiagnosticSettings() : DiagnosticSettings
     return DiagnosticSettings;
 }
 
+// Aesir Mod: Publish diagnostics for one file under one uri
+// The unreal editor sends compile diagnostics with the drive letter case of its own
+// path. The language server sends parse diagnostics with the display uri of the module.
+// The two cases differ, so a client that matches uris by exact string treats one file as
+// two documents. The empty list that clears the compile errors then reaches the wrong
+// document, and the errors stay on screen. Use the display uri of the module, so that
+// every notification for one file carries the same uri.
+//
+// The unreal editor can send compile diagnostics before the server loads the module.
+// No display uri is available then. Do not publish at that time. The module keeps the
+// stored compile diagnostics, and UpdateScriptModuleDiagnostics publishes them when the
+// module resolves. HasCompileDiagnostics makes that function send them.
+function GetCanonicalUri(uri : string) : string
+{
+    let asmodule = scriptfiles.GetModuleByUri(uri);
+    if (asmodule && asmodule.displayUri)
+        return asmodule.displayUri;
+    return null;
+}
+// END Aesir Mod: Publish diagnostics for one file under one uri
+
 function NotifyDiagnostics(uri : string, notifyEmpty = true)
 {
     let allDiagnostics : Array<Diagnostic> = [];
@@ -55,8 +76,14 @@ function NotifyDiagnostics(uri : string, notifyEmpty = true)
 
     if (notifyEmpty || allDiagnostics.length != 0)
     {
-        for (let func of NotifyFunctions)
-            func(uri, allDiagnostics);
+        // Aesir Mod: Publish diagnostics for one file under one uri
+        let notifyUri = GetCanonicalUri(uri);
+        if (notifyUri)
+        {
+            for (let func of NotifyFunctions)
+                func(notifyUri, allDiagnostics);
+        }
+        // END Aesir Mod: Publish diagnostics for one file under one uri
     }
 }
 
