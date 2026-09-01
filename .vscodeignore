@@ -7,3 +7,4 @@ extension/out/**
 language-server/node_modules/**
 language-server/out/**
 node_modules/**
+.claude/**
