@@ -330,6 +330,27 @@ type InitializationOptions = {
     additionalScriptRootFolders?: WorkspaceFolder[]
 } | undefined;
 
+// Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+// Editors disagree on the case of windows drive letters in file uris. Rider sends
+// a different case than vscode, and some send it inconsistently. Module names are
+// resolved by prefix matching a file uri against the root uris, so a root that is
+// registered with only one case fails to match and produces an invalid module name.
+// Registering both cases makes the prefix match work whatever the editor sends.
+function withDriveLetterCase(uri : string, toCase : (drive : string) => string) : string
+{
+    return uri.replace(/^(file:\/\/\/)([a-zA-Z])(:)/, (_, prefix, drive, colon) => prefix + toCase(drive) + colon);
+}
+
+function addRootUri(uri : string)
+{
+    for (let variant of [uri, withDriveLetterCase(uri, (d) => d.toUpperCase()), withDriveLetterCase(uri, (d) => d.toLowerCase())])
+    {
+        if (!RootUris.includes(variant))
+            RootUris.push(variant);
+    }
+}
+// END Aesir Mod: Add both upper case and lower case drive letter versions to root uris
+
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
 connection.onInitialize((_params): InitializeResult => {
@@ -339,11 +360,11 @@ connection.onInitialize((_params): InitializeResult => {
 
     if (_params.workspaceFolders == null) {
         Roots.push(_params.rootPath);
-        RootUris.push(decodeURIComponent(_params.rootUri));
+        addRootUri(decodeURIComponent(_params.rootUri));
     } else {
         for (let Workspace of _params.workspaceFolders) {
             Roots.push(URI.parse(Workspace.uri).fsPath);
-            RootUris.push(decodeURIComponent(Workspace.uri));
+            addRootUri(decodeURIComponent(Workspace.uri));
         }
     }
 
@@ -355,7 +376,7 @@ connection.onInitialize((_params): InitializeResult => {
             let uri = decodeURIComponent(scriptRootPath.uri);
             if (!RootUris.includes(uri)) {
                 Roots.push(URI.parse(scriptRootPath.uri).fsPath);
-                RootUris.push(uri);
+                addRootUri(uri);
             }
         }
     }
